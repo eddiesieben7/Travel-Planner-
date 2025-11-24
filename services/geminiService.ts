@@ -57,6 +57,53 @@ const displayRecommendationsTool: FunctionDeclaration = {
   }
 };
 
+// External API Tool Definition (Weather)
+const getWeatherTool: FunctionDeclaration = {
+  name: "getDestinationWeather",
+  description: "Gets the current weather forecast for a destination using an external API. Use this when the user asks about weather, climate, or best time to travel.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      locationName: { type: Type.STRING, description: "Name of the city/region" },
+      latitude: { type: Type.NUMBER, description: "Latitude of the destination (approximate is fine)" },
+      longitude: { type: Type.NUMBER, description: "Longitude of the destination (approximate is fine)" },
+    },
+    required: ["locationName", "latitude", "longitude"]
+  }
+};
+
+// SerpApi Google Flights Search Tool
+const searchFlightsTool: FunctionDeclaration = {
+  name: "searchFlights",
+  description: "Searches for REAL, LIVE flight offers using the Google Flights engine via SerpApi. Use this when the user asks for flight prices or availability.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      origin: { type: Type.STRING, description: "3-letter IATA Airport Code (e.g., 'MUC', 'FRA'). DO NOT use city names." },
+      destination: { type: Type.STRING, description: "3-letter IATA Airport Code (e.g., 'LHR', 'JFK'). DO NOT use city names." },
+      departureDate: { type: Type.STRING, description: "Date in YYYY-MM-DD format." },
+      returnDate: { type: Type.STRING, description: "Optional return date in YYYY-MM-DD format." },
+    },
+    required: ["origin", "destination", "departureDate"]
+  }
+};
+
+// SerpApi Google Hotels Search Tool
+const searchHotelsTool: FunctionDeclaration = {
+  name: "searchHotels",
+  description: "Searches for REAL, LIVE hotel offers using the Google Hotels engine via SerpApi. Use this when the user asks for accommodation, hotels, or places to stay.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      q: { type: Type.STRING, description: "Location query (e.g. 'Hotels in Paris', 'Berlin'). Can be a city name." },
+      check_in_date: { type: Type.STRING, description: "Check-in date in YYYY-MM-DD format." },
+      check_out_date: { type: Type.STRING, description: "Check-out date in YYYY-MM-DD format." },
+      adults: { type: Type.NUMBER, description: "Number of adults (default is 1)." }
+    },
+    required: ["q", "check_in_date", "check_out_date"]
+  }
+};
+
 export const createTravelChat = (userSettings: UserSettings, currentTrips: Trip[]): Chat => {
   const model = "gemini-2.5-flash";
   
@@ -81,11 +128,27 @@ export const createTravelChat = (userSettings: UserSettings, currentTrips: Trip[
     PHASE 3: PERSONEN (Widget)
     - Wenn du konkrete Angebote machen willst, aber die Personenanzahl nicht kennst, rufe \`requestPersonCount\` auf.
 
-    PHASE 4: SUCHE & PRÄSENTATION (Karten)
-    - Nutze \`googleSearch\` um echte Daten zu finden.
-    - WICHTIG: Wenn du konkrete Reiseoptionen gefunden hast, schreibe NICHTS als Text.
-    - Rufe stattdessen SOFORT das Tool \`displayRecommendations\` auf und übergebe 2-3 Optionen.
-    - Das System zeigt diese dann als schöne Karten an.
+    PHASE 4: SUCHE & PRÄSENTATION (Karten & APIs)
+    - Nutze \`googleSearch\` um allgemeine Infos zu finden.
+    - Nutze \`getDestinationWeather\` für Wetterfragen.
+    
+    FLÜGE (SerpApi):
+    - Nutze \`searchFlights\` WENN der Nutzer explizit nach Flügen fragt UND ein API Key vorhanden ist.
+    - WICHTIG: Die API akzeptiert NUR 3-stellige IATA-Flughafencodes (z.B. 'MUC'). Wandle Städtenamen in IATA-Codes um.
+    - Nenne immer den CO2-Ausstoß, der in den Daten geliefert wird.
+
+    HOTELS (SerpApi):
+    - Nutze \`searchHotels\` für Unterkunftsanfragen.
+    - Hier darfst du normale Städtenamen für den Parameter 'q' verwenden (z.B. "Hotels in Rom").
+    - Zeige Preis pro Nacht, Gesamtpreis und Bewertung an.
+    - Wenn die API-Daten "Eco-certified" oder ähnliches enthalten, hebe das hervor.
+    
+    PRÄSENTATION:
+    - Gib IMMER Links zu den Angeboten an (Google Flights / Google Hotels Deep Links).
+    - Label Links als "[Zum Angebot](url)".
+    
+    - Wenn du konkrete, komplette Reiseoptionen (Transport + Ziel + Vibe) vorschlägst:
+    - Rufe das Tool \`displayRecommendations\` auf und übergebe 2-3 Optionen für die Kartenansicht.
     
     Sei freundlich, professionell, kurz und nutze Markdown.
   `;
@@ -96,7 +159,7 @@ export const createTravelChat = (userSettings: UserSettings, currentTrips: Trip[
       systemInstruction,
       tools: [
         { googleSearch: {} }, 
-        { functionDeclarations: [requestPersonCountTool, requestTripDetailsTool, displayRecommendationsTool] }
+        { functionDeclarations: [requestPersonCountTool, requestTripDetailsTool, displayRecommendationsTool, getWeatherTool, searchFlightsTool, searchHotelsTool] }
       ],
     },
   });

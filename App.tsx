@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
@@ -10,10 +11,12 @@ const App: React.FC = () => {
   // State Management
   const [userSettings, setUserSettings] = useState<UserSettings>(() => {
     const saved = localStorage.getItem('ecoTravel_settings');
-    return saved ? JSON.parse(saved) : {
-      annualBudget: 5000,
-      annualCo2Limit: 2000,
-      hasOnboarded: false
+    const parsed = saved ? JSON.parse(saved) : {};
+    return {
+      annualBudget: parsed.annualBudget || 5000,
+      annualCo2Limit: parsed.annualCo2Limit || 2000,
+      hasOnboarded: parsed.hasOnboarded || false,
+      serpApiKey: parsed.serpApiKey || ''
     };
   });
 

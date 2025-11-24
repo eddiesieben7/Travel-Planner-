@@ -3,6 +3,7 @@ export interface UserSettings {
   annualBudget: number;
   annualCo2Limit: number; // in kg
   hasOnboarded: boolean;
+  serpApiKey?: string;
 }
 
 export interface Trip {

@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { UserSettings } from '../types';
-import { Save, X } from 'lucide-react';
+import { Save, X, Search, Key } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface SettingsModalProps {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings, onSave }) => {
   const [budget, setBudget] = useState(settings.annualBudget);
   const [co2, setCo2] = useState(settings.annualCo2Limit);
+  const [serpKey, setSerpKey] = useState(settings.serpApiKey || '');
 
   if (!isOpen) return null;
 
@@ -21,17 +23,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
       annualBudget: budget,
       annualCo2Limit: co2,
       hasOnboarded: true,
+      serpApiKey: serpKey
     });
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200 my-8">
         <div className="bg-emerald-600 p-6 text-white flex justify-between items-start">
           <div>
-             <h2 className="text-2xl font-bold">Deine Ziele</h2>
-             <p className="text-emerald-100 text-sm mt-1">Lege dein Jahresbudget und CO2-Ziel fest.</p>
+             <h2 className="text-2xl font-bold">Einstellungen</h2>
+             <p className="text-emerald-100 text-sm mt-1">Verwalte Budget, Ziele und Integrationen.</p>
           </div>
           {settings.hasOnboarded && (
             <button onClick={onClose} className="text-white/80 hover:text-white">
@@ -41,36 +44,65 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
         </div>
         
         <div className="p-6 space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Jährliches Reisebudget (€)
-            </label>
-            <div className="relative">
-                <span className="absolute left-3 top-3 text-gray-400">€</span>
-                <input
-                type="number"
-                value={budget}
-                onChange={(e) => setBudget(Number(e.target.value))}
-                className="w-full pl-8 p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
-                />
-            </div>
-            <p className="text-xs text-gray-500 mt-1">Wie viel möchtest du dieses Jahr maximal ausgeben?</p>
+          {/* Main Goals Section */}
+          <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900 border-b pb-2">Ziele</h3>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Jährliches Reisebudget (€)
+                </label>
+                <div className="relative">
+                    <span className="absolute left-3 top-3 text-gray-400">€</span>
+                    <input
+                    type="number"
+                    value={budget}
+                    onChange={(e) => setBudget(Number(e.target.value))}
+                    className="w-full pl-8 p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
+                    />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Jährliches CO2 Limit (kg)
+                </label>
+                 <div className="relative">
+                    <span className="absolute left-3 top-3 text-gray-400">kg</span>
+                    <input
+                    type="number"
+                    value={co2}
+                    onChange={(e) => setCo2(Number(e.target.value))}
+                    className="w-full pl-8 p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
+                    />
+                </div>
+              </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Jährliches CO2 Limit (kg)
-            </label>
-             <div className="relative">
-                <span className="absolute left-3 top-3 text-gray-400">kg</span>
-                <input
-                type="number"
-                value={co2}
-                onChange={(e) => setCo2(Number(e.target.value))}
-                className="w-full pl-8 p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
-                />
-            </div>
-            <p className="text-xs text-gray-500 mt-1">Durchschnitt pro Person pro Jahr: ca. 11.000 kg. Nachhaltiges Ziel: unter 2.000 kg für Reisen.</p>
+          {/* Integrations Section */}
+          <div className="space-y-4">
+              <div className="flex items-center gap-2 border-b pb-2 text-gray-900">
+                  <Search className="h-4 w-4 text-emerald-600" />
+                  <h3 className="font-semibold">SerpApi (Google Flights)</h3>
+              </div>
+              <p className="text-xs text-gray-500">
+                  Erforderlich für Live-Flugdaten. Erstelle einen kostenlosen Account auf serpapi.com und füge deinen Key hier ein.
+              </p>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  SerpApi Key
+                </label>
+                <div className="relative">
+                    <Key className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <input
+                    type="password"
+                    value={serpKey}
+                    onChange={(e) => setSerpKey(e.target.value)}
+                    placeholder="Dein Api Key..."
+                    className="w-full pl-9 p-2 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
+                    />
+                </div>
+              </div>
           </div>
 
           <button

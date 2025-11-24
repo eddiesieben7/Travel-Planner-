@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Check, Loader2, PlusCircle, Users, Calendar, MapPin, Globe, Minus, Plus, PiggyBank, Clock, ArrowRight, Leaf, Train, Plane, Car, Ship } from 'lucide-react';
+import { Send, Bot, User, Check, Loader2, PlusCircle, Users, Calendar, MapPin, Globe, Minus, Plus, PiggyBank, Clock, ArrowRight, Leaf, Train, Plane, Car, Ship, CloudSun, AlertTriangle, Sparkles, Building } from 'lucide-react';
 import { ChatMessage, Trip, UserSettings, GroundingSource, Recommendation } from '../types';
 import { createTravelChat, parseTripFromChat } from '../services/geminiService';
 import { Chat } from '@google/genai';
@@ -17,6 +17,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('Denkt nach...'); // New state for dynamic status
   const [chatSession, setChatSession] = useState<Chat | null>(null);
   const [proposedTrip, setProposedTrip] = useState<Partial<Trip> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -40,12 +41,14 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
   });
 
   useEffect(() => {
+    // Reset session when key settings change significantly, or init if null
+    // Ideally we keep session history but for this demo a fresh session if settings change is okayish
     if (!chatSession) {
       const session = createTravelChat(userSettings, currentTrips);
       setChatSession(session);
       handleSendMessage("Hallo! Ich möchte eine neue Reise planen.", session, true);
     }
-  }, [chatSession, userSettings, currentTrips]);
+  }, [userSettings, currentTrips]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -53,7 +56,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, activeWidget]);
+  }, [messages, activeWidget, isLoading]);
 
   const handleSendMessage = async (text: string | null, session: Chat | null = chatSession, hidden: boolean = false, toolResponse?: any) => {
     if (!session) return;
@@ -64,6 +67,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
        setActiveWidget('none');
        setPendingFunctionCall(null);
        setIsLoading(true);
+       setLoadingText('Verarbeite Antwort...');
        
        const part = {
          functionResponse: {
@@ -73,7 +77,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
        };
        responsePromise = session.sendMessage({ message: [part] });
 
-       let confirmationText = "Details gesendet.";
+       let confirmationText = "Daten gesendet.";
        if (toolResponse.name === 'requestPersonCount') confirmationText = `${toolResponse.response.count} Reisende ausgewählt.`;
        if (toolResponse.name === 'requestTripDetails') {
            const details = toolResponse.response;
@@ -82,9 +86,11 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
            const time = details.isFlexible ? `ca. ${details.durationDays} Tage (${details.preferredSeason || 'Zeitraum flexibel'})` : `${details.startDate} - ${details.endDate}`;
            confirmationText = `Suche: ${dest} | ${time}${budget}`;
        }
+       if (toolResponse.name === 'searchFlights') confirmationText = "Flugsuche via Google Flights (SerpApi) gestartet.";
+       if (toolResponse.name === 'searchHotels') confirmationText = "Hotelsuche via Google Hotels (SerpApi) gestartet.";
        
-       // Don't add user confirmation for displayRecommendations internal loop
-       if (toolResponse.name !== 'displayRecommendations') {
+       // Don't add user confirmation for internal tool loops
+       if (toolResponse.name !== 'displayRecommendations' && toolResponse.name !== 'getDestinationWeather' && toolResponse.name !== 'searchFlights' && toolResponse.name !== 'searchHotels') {
             setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 role: 'user',
@@ -104,6 +110,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
         }
         setInput('');
         setIsLoading(true);
+        setLoadingText('EcoTravel Bot denkt nach...');
         setProposedTrip(null); 
         setGroundingSources([]);
         responsePromise = session.sendMessage({ message: text });
@@ -133,7 +140,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
                 setIsLoading(false);
                 return;
             } else if (fc.name === 'displayRecommendations') {
-                // Handle the recommendations tool
+                setLoadingText('Generiere Reisekarten...');
                 const args = fc.args as any;
                 if (args && args.recommendations) {
                     setMessages(prev => [...prev, {
@@ -144,12 +151,238 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
                         timestamp: Date.now()
                     }]);
                     
-                    // Automatically respond to the tool call to keep history clean
                     handleSendMessage(null, session, true, {
                         name: fc.name,
                         response: "options_displayed"
                     });
-                    return; // Don't execute the rest (parsing trip) yet
+                    return;
+                }
+            } else if (fc.name === 'getDestinationWeather') {
+                setLoadingText('Rufe Wetterdaten ab...');
+                // External API Call Logic (Weather)
+                const args = fc.args as any;
+                const lat = args.latitude;
+                const lon = args.longitude;
+                
+                try {
+                    const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto`);
+                    const weatherData = await weatherRes.json();
+                    
+                    handleSendMessage(null, session, true, {
+                        name: fc.name,
+                        response: weatherData
+                    });
+                    return;
+                } catch (e) {
+                    console.error("Weather fetch failed", e);
+                     handleSendMessage(null, session, true, {
+                        name: fc.name,
+                        response: "Error fetching weather data"
+                    });
+                    return;
+                }
+            } else if (fc.name === 'searchHotels') {
+                setLoadingText('Suche Hotels via SerpApi...');
+                const args = fc.args as any;
+
+                if (!userSettings.serpApiKey) {
+                     setMessages(prev => [...prev, {
+                        id: Date.now().toString(),
+                        role: 'model',
+                        text: "⚠️ Um Hotels zu suchen, musst du deinen **SerpApi Key** in den Einstellungen hinterlegen.",
+                        timestamp: Date.now()
+                    }]);
+                    setIsLoading(false);
+                    handleSendMessage(null, session, true, {
+                         name: fc.name,
+                         response: "ERROR: User has not configured SerpApi key in settings."
+                    });
+                    return;
+                }
+
+                try {
+                    setLoadingText(`Suche Hotels in ${args.q}...`);
+                    
+                    // Construct SerpApi URL for Hotels
+                    const params = new URLSearchParams({
+                        engine: "google_hotels",
+                        q: args.q,
+                        check_in_date: args.check_in_date,
+                        check_out_date: args.check_out_date,
+                        adults: (args.adults || 1).toString(),
+                        currency: "EUR",
+                        hl: "de",
+                        gl: "de",
+                        api_key: userSettings.serpApiKey
+                    });
+
+                    const serpUrl = `https://serpapi.com/search.json?${params.toString()}`;
+                    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(serpUrl)}`;
+                    
+                    const res = await fetch(proxyUrl);
+                    if (!res.ok) throw new Error(`SerpApi Hotels request failed: ${res.status}`);
+                    
+                    const data = await res.json();
+                    if (data.error) throw new Error(`SerpApi Error: ${data.error}`);
+
+                    const properties = data.properties || [];
+                    const topProperties = properties.slice(0, 5); // Take top 5
+
+                    const simplified = topProperties.map((hotel: any) => ({
+                        name: hotel.name,
+                        price_per_night: hotel.rate_per_night?.lowest,
+                        total_rate: hotel.total_rate?.lowest,
+                        rating: hotel.overall_rating,
+                        description: hotel.description,
+                        eco_certified: hotel.eco_certified || false,
+                        link: hotel.link, // Deep link to booking
+                        image: hotel.images?.[0]?.thumbnail,
+                        gps: hotel.gps_coordinates
+                    }));
+
+                    handleSendMessage(null, session, true, {
+                        name: fc.name,
+                        response: {
+                            hotels: simplified,
+                            search_url: data.search_metadata?.google_hotels_url
+                        }
+                    });
+                    return;
+
+                } catch (e) {
+                     console.error("SerpApi Hotels failed", e);
+                     handleSendMessage(null, session, true, {
+                        name: fc.name,
+                        response: `Error fetching hotels: ${e instanceof Error ? e.message : 'Unknown error'}`
+                    });
+                    return;
+                }
+
+            } else if (fc.name === 'searchFlights') {
+                setLoadingText('Verbinde mit Google Flights (SerpApi)...');
+                
+                // External API Call Logic (SerpApi)
+                const args = fc.args as any;
+                
+                if (!userSettings.serpApiKey) {
+                     setMessages(prev => [...prev, {
+                        id: Date.now().toString(),
+                        role: 'model',
+                        text: "⚠️ Um Flüge zu suchen, musst du deinen **SerpApi Key** in den Einstellungen hinterlegen.",
+                        timestamp: Date.now()
+                    }]);
+                    setIsLoading(false);
+                    handleSendMessage(null, session, true, {
+                         name: fc.name,
+                         response: "ERROR: User has not configured SerpApi key in settings."
+                    });
+                    return;
+                }
+
+                try {
+                    // Ensure codes are uppercase 3-letter IATA
+                    const origin = args.origin?.toUpperCase() || "";
+                    const destination = args.destination?.toUpperCase() || "";
+                    const { departureDate, returnDate } = args;
+
+                    setLoadingText(`Suche Flüge: ${origin} → ${destination}...`);
+                    
+                    // Construct SerpApi URL
+                    const params = new URLSearchParams({
+                        engine: "google_flights",
+                        departure_id: origin,
+                        arrival_id: destination,
+                        outbound_date: departureDate,
+                        currency: "EUR",
+                        hl: "de", // German language
+                        api_key: userSettings.serpApiKey
+                    });
+
+                    if (returnDate) {
+                        params.append("return_date", returnDate);
+                        params.append("type", "1"); // Round Trip
+                    } else {
+                        params.append("type", "2"); // One Way
+                    }
+
+                    // CORS PROXY FIX: 
+                    // Direct requests to serpapi.com are blocked by browsers. We route through a public proxy.
+                    const serpUrl = `https://serpapi.com/search.json?${params.toString()}`;
+                    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(serpUrl)}`;
+                    
+                    const res = await fetch(proxyUrl);
+                    if (!res.ok) {
+                        const errText = await res.text();
+                         throw new Error(`SerpApi request failed: ${res.status} ${res.statusText} - ${errText}`);
+                    }
+                    
+                    const data = await res.json();
+                    
+                    if (data.error) {
+                         throw new Error(`SerpApi Error: ${data.error}`);
+                    }
+
+                    // Extract Best Flights
+                    const bestFlights = data.best_flights;
+                    const otherFlights = data.other_flights;
+                    const allFlights = [...(bestFlights || []), ...(otherFlights || [])].slice(0, 5); // Take top 5
+                    
+                    const searchMetadata = data.search_metadata || {};
+                    const googleFlightsUrl = searchMetadata.google_flights_url;
+
+                    if (allFlights.length === 0) {
+                         handleSendMessage(null, session, true, {
+                            name: fc.name,
+                            response: `Keine Flüge gefunden. Link zur manuellen Suche: ${googleFlightsUrl || 'Google Flights'}`
+                        });
+                        return;
+                    }
+
+                    // Simplify for LLM
+                    const simplified = allFlights.map((flight: any) => ({
+                        price: flight.price,
+                        airline: flight.flights?.[0]?.airline,
+                        // EXTRACT CO2 EMISSIONS HERE
+                        co2Emission: flight.carbon_emissions?.this_flight 
+                            ? `${Math.round(flight.carbon_emissions.this_flight / 1000)} kg` 
+                            : 'Unbekannt',
+                        duration: flight.total_duration,
+                        departure: flight.flights?.[0]?.departure_airport?.time,
+                        arrival: flight.flights?.[flight.flights.length - 1]?.arrival_airport?.time,
+                        bookingLink: googleFlightsUrl
+                    }));
+
+                    // Append the global Google Flights Deep Link found by SerpApi
+                    const responsePayload = {
+                        flights: simplified,
+                        deepLink: googleFlightsUrl,
+                        note: "These are live prices from SerpApi including Carbon Emission estimates."
+                    };
+
+                    handleSendMessage(null, session, true, {
+                        name: fc.name,
+                        response: responsePayload
+                    });
+                    return;
+
+                } catch (e) {
+                     console.error("SerpApi fetch failed", e);
+                     const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+                     
+                     // If it's the specific IATA code error, give a hint to the LLM
+                     let feedback = "Error fetching flight data via SerpApi. Details: " + errorMessage;
+                     if (errorMessage.includes("3-letter code") || errorMessage.includes("departure_id")) {
+                         feedback += " HINT: You MUST use uppercase 3-letter IATA airport codes (e.g. MUC, LHR) for origin and destination, not city names.";
+                     }
+                     if (errorMessage.includes("return_date") && errorMessage.includes("type")) {
+                        feedback += " HINT: You requested a round-trip but did not provide a return date. Either provide a return date or search for one-way.";
+                     }
+
+                     handleSendMessage(null, session, true, {
+                        name: fc.name,
+                        response: feedback
+                    });
+                    return;
                 }
             }
         }
@@ -194,6 +427,7 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
       }]);
     } finally {
        setIsLoading(false);
+       setLoadingText('');
     }
   };
 
@@ -267,9 +501,14 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
            <Bot className="h-5 w-5 text-emerald-600" />
            <span className="font-semibold text-emerald-900">EcoTravel Assistent</span>
         </div>
-        <span className="text-xs text-emerald-600 bg-white px-2 py-1 rounded-full border border-emerald-200 hidden sm:inline-block">
-            Gemini 2.5 & Search
-        </span>
+        <div className="flex items-center gap-2">
+             <span className="text-xs text-gray-500 hidden sm:inline-block flex items-center gap-1">
+                <CloudSun className="h-3 w-3" /> External APIs
+            </span>
+            <span className="text-xs text-emerald-600 bg-white px-2 py-1 rounded-full border border-emerald-200 hidden sm:inline-block">
+                Gemini 2.5
+            </span>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50">
@@ -287,13 +526,28 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
                             ? 'bg-emerald-600 text-white rounded-tr-none'
                             : 'bg-white text-gray-800 rounded-tl-none border border-gray-200'
                         }`}>
-                        {msg.text.split('\n').map((line, i) => (
-                            <p key={i} className={line.startsWith('-') ? 'ml-4' : 'mb-1'}>
-                                {line.split('**').map((part, j) => 
-                                    j % 2 === 1 ? <strong key={j}>{part}</strong> : part
-                                )}
-                            </p>
-                        ))}
+                         {/* Render Markdown-like links specifically */}
+                        {msg.text.split('\n').map((line, i) => {
+                            // Simple regex to detect markdown links: [Title](url)
+                            const parts = line.split(/(\[[^\]]+\]\([^)]+\))/g);
+                            return (
+                                <p key={i} className={line.startsWith('-') ? 'ml-4' : 'mb-1'}>
+                                    {parts.map((part, j) => {
+                                        const match = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+                                        if (match) {
+                                            return (
+                                                <a key={j} href={match[2]} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:text-emerald-800 underline font-medium inline-flex items-center">
+                                                    {match[1]} <Globe className="w-3 h-3 ml-1" />
+                                                </a>
+                                            );
+                                        }
+                                        return part.split('**').map((subPart, k) => 
+                                            k % 2 === 1 ? <strong key={k}>{subPart}</strong> : subPart
+                                        );
+                                    })}
+                                </p>
+                            );
+                        })}
                     </div>
                 </div>
              </div>
@@ -378,10 +632,19 @@ export const TripPlanner: React.FC<TripPlannerProps> = ({ userSettings, currentT
         )}
 
         {isLoading && !activeWidget && (
-          <div className="flex justify-start animate-in fade-in">
-             <div className="bg-white p-4 rounded-2xl rounded-tl-none border border-gray-200 shadow-sm ml-12 flex items-center space-x-2">
-                <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
-                <span className="text-sm text-gray-500">Suche nach den besten Optionen...</span>
+          <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+             <div className="flex items-center space-x-3 ml-2">
+                 <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center">
+                    <Bot className="h-5 w-5 text-white" />
+                 </div>
+                 <div className="bg-white px-4 py-3 rounded-2xl rounded-tl-none border border-gray-200 shadow-sm flex items-center gap-3">
+                    <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce"></div>
+                    </div>
+                    <span className="text-sm text-gray-500 font-medium animate-pulse">{loadingText}</span>
+                 </div>
              </div>
           </div>
         )}

@@ -1,0 +1,5 @@
+{
+  "name": "EcoTravel Planner",
+  "description": "Ein intelligenter Reiseplaner mit Budget- und CO2-Tracking, unterstützt durch Google Gemini und Live-Websuche.",
+  "requestFramePermissions": []
+}

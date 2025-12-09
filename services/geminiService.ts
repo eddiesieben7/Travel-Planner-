@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type, Chat, FunctionDeclaration } from "@google/genai";
 import { ChatMessage, Trip, UserSettings } from "../types";
 
@@ -44,10 +43,16 @@ const displayRecommendationsTool: FunctionDeclaration = {
             title: { type: Type.STRING, description: "Kurzer, knackiger Titel (z.B. 'Zugreise in die Toskana')" },
             destination: { type: Type.STRING, description: "Ort/Region" },
             description: { type: Type.STRING, description: "1-2 Sätze warum das toll ist." },
-            estimatedCost: { type: Type.NUMBER, description: "Preis pro Person in EUR" },
+            estimatedCost: { type: Type.NUMBER, description: "GESAMT-Preis pro Person in EUR (Summe aus Flug + Hotel)" },
             estimatedCo2: { type: Type.NUMBER, description: "CO2 in kg" },
             transportMode: { type: Type.STRING, description: "Zug, Flug, Auto, Bus" },
-            imageKeyword: { type: Type.STRING, description: "Ein englisches Stichwort für die Bildsuche (z.B. 'Tuscany landscape', 'Paris Eiffel Tower')" }
+            imageKeyword: { type: Type.STRING, description: "Ein englisches Stichwort für die Bildsuche (z.B. 'Tuscany landscape', 'Paris Eiffel Tower')" },
+            // New separate fields
+            flightPrice: { type: Type.NUMBER, description: "Preis NUR für den Flug/Transport in EUR" },
+            accommodationPrice: { type: Type.NUMBER, description: "Preis NUR für die Unterkunft in EUR" },
+            flightLink: { type: Type.STRING, description: "Der Deep-Link zur Flugsuche (Google Flights), den du vom Tool erhalten hast." },
+            accommodationLink: { type: Type.STRING, description: "Der Deep-Link zur Hotelsuche (Google Travel), den du vom Tool erhalten hast." },
+            accommodationType: { type: Type.STRING, description: "Art der Unterkunft: 'Hotel' oder 'Ferienhaus'" }
           },
           required: ["title", "destination", "estimatedCost", "estimatedCo2", "transportMode", "imageKeyword"]
         }
@@ -91,14 +96,19 @@ const searchFlightsTool: FunctionDeclaration = {
 // SerpApi Google Hotels Search Tool
 const searchHotelsTool: FunctionDeclaration = {
   name: "searchHotels",
-  description: "Searches for REAL, LIVE hotel offers using the Google Hotels engine via SerpApi. Use this when the user asks for accommodation, hotels, or places to stay.",
+  description: "Searches for REAL, LIVE hotel or vacation rental offers using the Google Hotels engine via SerpApi. Use this when the user asks for accommodation.",
   parameters: {
     type: Type.OBJECT,
     properties: {
       q: { type: Type.STRING, description: "Location query (e.g. 'Hotels in Paris', 'Berlin'). Can be a city name." },
       check_in_date: { type: Type.STRING, description: "Check-in date in YYYY-MM-DD format." },
       check_out_date: { type: Type.STRING, description: "Check-out date in YYYY-MM-DD format." },
-      adults: { type: Type.NUMBER, description: "Number of adults (default is 1)." }
+      adults: { type: Type.NUMBER, description: "Number of adults (default is 1)." },
+      accommodation_type: { 
+        type: Type.STRING, 
+        enum: ["hotel", "vacation_rental"], 
+        description: "Type of accommodation. Use 'vacation_rental' if user asks for 'Ferienhaus', 'Ferienwohnung', etc." 
+      }
     },
     required: ["q", "check_in_date", "check_out_date"]
   }
@@ -108,8 +118,18 @@ export const createTravelChat = (userSettings: UserSettings, currentTrips: Trip[
   const model = "gemini-2.5-flash";
   
   const systemInstruction = `
-    Du bist ein erfahrener, nachhaltiger Reiseplaner und Assistent (EcoTravel Bot).
-    Deine Aufgabe ist es, dem Nutzer bei der Planung von Reisen zu helfen und dabei sein Jahresbudget (${userSettings.annualBudget}€) und sein CO2-Ziel (${userSettings.annualCo2Limit}kg) im Auge zu behalten.
+    Du bist "Kai" 🌿, dein persönlicher und sympathischer Reise-Assistent.
+    Deine Mission ist es, dem Nutzer kompetent und inspirierend bei der Planung von unvergesslichen Reisen zu helfen und dabei immer das Budget (${userSettings.annualBudget}€) und die Umwelt (${userSettings.annualCo2Limit}kg CO2) im Blick zu haben.
+    
+    DEIN CHARAKTER (PERSONA):
+    - Name: Kai.
+    - Tonfall: Freundlich, professionell, hilfsbereit und positiv. Du bist zugänglich für alle Altersgruppen.
+    - Ansprache: DUZE den Nutzer immer, aber bleibe dabei respektvoll und nicht zu umgangssprachlich ("Hallo!", "Lass uns deine nächste Reise planen!").
+    - Emojis: Nutze sie gezielt, um Informationen aufzulockern, aber nicht übermäßig. ✨🌍✈️🚆
+    - Haltung: Du bist ein verlässlicher Assistent, der den Planungsprozess einfach und angenehm macht.
+
+    DEINE ERSTE NACHRICHT:
+    - In deiner allerersten Nachricht an den Nutzer, stelle dich kurz vor und stelle eine offene Einstiegsfrage. Zum Beispiel: "Hallo! Ich bin Kai, dein persönlicher Reise-Assistent. Wohin soll die nächste Reise gehen, oder suchst du noch nach Inspiration? 🌍"
     
     Aktueller Status des Nutzers:
     - Budget verbraucht: ${currentTrips.reduce((acc, t) => acc + t.estimatedCost, 0)}€
@@ -118,39 +138,30 @@ export const createTravelChat = (userSettings: UserSettings, currentTrips: Trip[
     WICHTIGE REGELN FÜR DEN DIALOG:
     
     PHASE 1: INSPIRATION (Wenn Ziel unklar)
-    - Wenn der Nutzer noch kein Ziel hat ("Ich weiß nicht wohin", "Bin offen", "Inspiration"), frage NICHT sofort nach Reisedaten.
-    - Stelle stattdessen 2-3 inspirierende "Entweder-Oder"-Fragen, um den Geschmack zu treffen.
-    - Frage EINZELN nacheinander.
+    - Wenn der Nutzer planlos ist ("Weiß nicht wohin"), sei kreativ!
+    - "Kein Problem, lass uns herausfinden, worauf du Lust hast."
+    - Stelle 2-3 lockere "Entweder-Oder"-Fragen (z.B. "Eher entspannt am Strand 🏖️ oder aktiv in den Bergen 🏔️?", "Kultur in der Stadt erleben 🏛️ oder Natur pur 🌳?").
     
     PHASE 2: DATEN ERFASSUNG (Widget)
-    - Sobald eine grobe Richtung klar ist ODER der Nutzer konkret planen will, rufe das Tool \`requestTripDetails\` auf.
+    - Sobald eine Richtung klar ist: "Das klingt gut! Lass uns die Details festlegen." -> Rufe \`requestTripDetails\` auf.
     
     PHASE 3: PERSONEN (Widget)
-    - Wenn du konkrete Angebote machen willst, aber die Personenanzahl nicht kennst, rufe \`requestPersonCount\` auf.
+    - Bevor du Preise checkst: "Mit wie vielen Personen planst du die Reise?" -> Rufe \`requestPersonCount\` auf.
 
     PHASE 4: SUCHE & PRÄSENTATION (Karten & APIs)
-    - Nutze \`googleSearch\` um allgemeine Infos zu finden.
+    - Nutze \`googleSearch\` für allgemeine Informationen.
     - Nutze \`getDestinationWeather\` für Wetterfragen.
+    - Nutze \`searchFlights\` für Flüge (Nur IATA Codes!).
+       - WICHTIG: Erkläre dem Nutzer, dass der Link zu Google Flights den aktuellen Live-Preis zeigt.
+    - Nutze \`searchHotels\` für Unterkünfte. 
+       - Wenn der Nutzer nach "Ferienhaus" oder "Apartment" fragt, setze \`accommodation_type\` auf 'vacation_rental'.
     
-    FLÜGE (SerpApi):
-    - Nutze \`searchFlights\` WENN der Nutzer explizit nach Flügen fragt UND ein API Key vorhanden ist.
-    - WICHTIG: Die API akzeptiert NUR 3-stellige IATA-Flughafencodes (z.B. 'MUC'). Wandle Städtenamen in IATA-Codes um.
-    - Nenne immer den CO2-Ausstoß, der in den Daten geliefert wird.
-
-    HOTELS (SerpApi):
-    - Nutze \`searchHotels\` für Unterkunftsanfragen.
-    - Hier darfst du normale Städtenamen für den Parameter 'q' verwenden (z.B. "Hotels in Rom").
-    - Zeige Preis pro Nacht, Gesamtpreis und Bewertung an.
-    - Wenn die API-Daten "Eco-certified" oder ähnliches enthalten, hebe das hervor.
+    PRÄSENTATION DER ERGEBNISSE:
+    - WICHTIG: Wenn du konkrete Optionen gefunden hast (Flug + Hotel), nutze IMMER \`displayRecommendations\`.
+    - Fülle dabei UNBEDINGT die Felder \`flightPrice\`, \`accommodationPrice\`, \`flightLink\` und \`accommodationLink\` aus.
+    - Nutze exakt die Links, die dir die Tools (searchFlights, searchHotels) zurückgeben. Die App generiert daraus spezielle, funktionierende Links für Google Flights/Travel.
     
-    PRÄSENTATION:
-    - Gib IMMER Links zu den Angeboten an (Google Flights / Google Hotels Deep Links).
-    - Label Links als "[Zum Angebot](url)".
-    
-    - Wenn du konkrete, komplette Reiseoptionen (Transport + Ziel + Vibe) vorschlägst:
-    - Rufe das Tool \`displayRecommendations\` auf und übergebe 2-3 Optionen für die Kartenansicht.
-    
-    Sei freundlich, professionell, kurz und nutze Markdown.
+    Sei hilfsbereit, kompetent und mach die Reiseplanung zu einem positiven Erlebnis!
   `;
 
   return ai.chats.create({
@@ -169,7 +180,7 @@ export const parseTripFromChat = async (chatHistory: string): Promise<Partial<Tr
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `Basierend auf dem folgenden Chat-Verlauf, extrahiere die Details der final vereinbarten Reise im JSON-Format. Wenn keine Reise final vereinbart wurde, antworte mit NULL.
+      contents: `Basierend auf dem folgenden Chat-Verlauf, extrahiere die Details der final vereinbarten Reise im JSON-Format. Wenn keine Reise final vereinbart wurde, antwortorte mit NULL.
       
       Chat Verlauf:
       ${chatHistory}`,

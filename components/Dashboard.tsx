@@ -1,171 +1,259 @@
-import React from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+
+import React, { useState } from 'react';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { Trip, UserSettings } from '../types';
-import { Euro, CloudFog, Plane, Train, Car, MapPin } from 'lucide-react';
+import { Settings, Bookmark, Leaf, Train, Plane, Car, History } from 'lucide-react';
 
 interface DashboardProps {
   userSettings: UserSettings;
   trips: Trip[];
+  onEditLimits?: () => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ userSettings, trips }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ userSettings, trips, onEditLimits }) => {
+  const [activeTab, setActiveTab] = useState<'impact' | 'history'>('impact');
+
   const totalSpent = trips.reduce((acc, trip) => acc + trip.estimatedCost, 0);
   const totalCo2 = trips.reduce((acc, trip) => acc + trip.estimatedCo2, 0);
 
-  const budgetData = [
-    { name: 'Verplant', value: totalSpent },
-    { name: 'Verfügbar', value: Math.max(0, userSettings.annualBudget - totalSpent) },
+  const budgetProgress = Math.min(100, (totalSpent / userSettings.annualBudget) * 100);
+  const co2Progress = Math.min(100, (totalCo2 / userSettings.annualCo2Limit) * 100);
+
+  // Data for Donut Charts
+  const budgetChartData = [
+    { name: 'Spent', value: totalSpent },
+    { name: 'Remaining', value: Math.max(0, userSettings.annualBudget - totalSpent) },
+  ];
+  const co2ChartData = [
+    { name: 'Used', value: totalCo2 },
+    { name: 'Remaining', value: Math.max(0, userSettings.annualCo2Limit - totalCo2) },
   ];
 
-  const co2Data = [
-    { name: 'Verbraucht', value: totalCo2 },
-    { name: 'Verbleibend', value: Math.max(0, userSettings.annualCo2Limit - totalCo2) },
-  ];
+  // Colors based on new palette
+  const CO2_COLORS = ['#527510', '#BFC269']; // Dark Green (Used), Light Olive (Remaining)
+  const BUDGET_COLORS = ['#3D5901', '#BFC269']; // Forest Green (Spent), Light Olive (Remaining)
 
-  const COLORS = {
-    budget: ['#10b981', '#e5e7eb'], // emerald-500, gray-200
-    co2: ['#64748b', '#e5e7eb'],    // slate-500, gray-200
-  };
+  const savedTrips = trips.filter(t => t.status === 'planned');
+  const bookedTrips = trips.filter(t => t.status === 'booked' || t.status === 'completed');
 
   const TransportIcon = ({ mode }: { mode?: string }) => {
-    const m = mode?.toLowerCase() || '';
-    if (m.includes('flug') || m.includes('flight')) return <Plane className="h-4 w-4 text-blue-500" />;
-    if (m.includes('bahn') || m.includes('zug') || m.includes('train')) return <Train className="h-4 w-4 text-emerald-500" />;
-    return <Car className="h-4 w-4 text-gray-500" />;
+      const m = mode?.toLowerCase() || '';
+      if (m.includes('flug') || m.includes('flight')) return <Plane className="h-4 w-4" />;
+      if (m.includes('bahn') || m.includes('zug') || m.includes('train')) return <Train className="h-4 w-4" />;
+      return <Car className="h-4 w-4" />;
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 relative overflow-hidden">
-            <div className="absolute right-0 top-0 p-4 opacity-10">
-                <Euro className="w-32 h-32" />
-            </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">Jahresbudget</h3>
-            <div className="mt-2 flex items-baseline">
-                <span className="text-4xl font-bold text-gray-900">{totalSpent.toLocaleString('de-DE')} €</span>
-                <span className="ml-2 text-sm text-gray-500">von {userSettings.annualBudget.toLocaleString('de-DE')} €</span>
-            </div>
-            <div className="mt-4 w-full bg-gray-100 rounded-full h-2.5">
-                <div 
-                    className="bg-emerald-500 h-2.5 rounded-full transition-all duration-1000" 
-                    style={{ width: `${Math.min(100, (totalSpent / userSettings.annualBudget) * 100)}%` }}
-                ></div>
-            </div>
+    <div className="space-y-6 animate-in fade-in duration-500 font-sans">
+      
+      {/* Welcome & Tabs Header */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#8DA736] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+            <h1 className="text-2xl font-bold text-[#193000]">Willkommen zurück, Alex</h1>
+            <p className="text-[#193000]/60 text-sm mt-1">Verwalte deine Nachhaltigkeitsziele und Reisehistorie.</p>
         </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 relative overflow-hidden">
-             <div className="absolute right-0 top-0 p-4 opacity-10">
-                <CloudFog className="w-32 h-32" />
-            </div>
-            <h3 className="text-gray-500 text-sm font-medium uppercase tracking-wider">CO2 Bilanz</h3>
-             <div className="mt-2 flex items-baseline">
-                <span className="text-4xl font-bold text-gray-900">{totalCo2.toLocaleString('de-DE')} kg</span>
-                <span className="ml-2 text-sm text-gray-500">von {userSettings.annualCo2Limit.toLocaleString('de-DE')} kg</span>
-            </div>
-            <div className="mt-4 w-full bg-gray-100 rounded-full h-2.5">
-                <div 
-                    className="bg-slate-500 h-2.5 rounded-full transition-all duration-1000" 
-                    style={{ width: `${Math.min(100, (totalCo2 / userSettings.annualCo2Limit) * 100)}%` }}
-                ></div>
-            </div>
+        <div className="flex bg-[#8DA736]/20 p-1 rounded-lg border border-[#8DA736]">
+            <button 
+                onClick={() => setActiveTab('impact')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'impact' ? 'bg-[#527510] text-white shadow-sm' : 'text-[#193000]/60 hover:text-[#527510]'}`}
+            >
+                Mein Einfluss
+            </button>
+            <button 
+                onClick={() => setActiveTab('history')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'history' ? 'bg-[#527510] text-white shadow-sm' : 'text-[#193000]/60 hover:text-[#527510]'}`}
+            >
+                Suchverlauf
+            </button>
         </div>
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <h4 className="text-lg font-semibold text-gray-800 mb-4">Budget Verteilung</h4>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={budgetData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {budgetData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS.budget[index % COLORS.budget.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value: number) => `${value.toLocaleString('de-DE')} €`} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+      {activeTab === 'impact' && (
+          <>
+            {/* Edit Limits Link */}
+            <div className="flex justify-end">
+                <button onClick={onEditLimits} className="flex items-center text-sm text-[#193000]/60 hover:text-[#527510] transition-colors">
+                    <Settings className="h-4 w-4 mr-1" />
+                    Limits bearbeiten
+                </button>
+            </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-           <h4 className="text-lg font-semibold text-gray-800 mb-4">CO2 Verteilung</h4>
-           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={co2Data}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {co2Data.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS.co2[index % COLORS.co2.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value: number) => `${value.toLocaleString('de-DE')} kg`} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* CO2 Card */}
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#8DA736] relative">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-2">
+                            <Leaf className="h-5 w-5 text-[#527510]" />
+                            <h3 className="font-semibold text-[#193000]">CO₂ Fußabdruck</h3>
+                        </div>
+                        <span className="bg-[#8DA736]/30 text-[#527510] text-xs px-2 py-1 rounded-full font-medium">jährlich</span>
+                    </div>
 
-      {/* Upcoming Trips List */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Kommende Reisen</h3>
-        </div>
-        {trips.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">
-            Noch keine Reisen geplant. Starte den Reiseplaner!
-          </div>
-        ) : (
-          <ul className="divide-y divide-gray-100">
-            {trips.map((trip) => (
-              <li key={trip.id} className="p-6 hover:bg-gray-50 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="bg-emerald-100 p-3 rounded-full">
-                      <MapPin className="h-6 w-6 text-emerald-600" />
+                    <div className="flex flex-col items-center justify-center relative h-48">
+                         <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={co2ChartData}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={60}
+                                    outerRadius={80}
+                                    startAngle={90}
+                                    endAngle={-270}
+                                    dataKey="value"
+                                    stroke="none"
+                                >
+                                    {co2ChartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={CO2_COLORS[index]} />
+                                    ))}
+                                </Pie>
+                            </PieChart>
+                         </ResponsiveContainer>
+                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                             <span className="text-2xl font-bold text-[#193000]">{totalCo2}</span>
+                             <span className="text-xs text-[#193000]/60">kg verbraucht</span>
+                         </div>
                     </div>
-                    <div>
-                      <p className="text-lg font-medium text-gray-900">{trip.destination}</p>
-                      <div className="flex items-center text-sm text-gray-500 space-x-2">
-                        <span>{trip.startDate !== 'TBD' ? new Date(trip.startDate).toLocaleDateString('de-DE') : 'Datum offen'}</span>
-                        <span>•</span>
-                        <TransportIcon mode={trip.transportMode} />
-                        <span>{trip.transportMode || 'Reisemittel offen'}</span>
-                      </div>
+
+                    <div className="mt-4">
+                        <div className="flex justify-between text-sm mb-1">
+                            <span className="text-[#193000]/60">Fortschritt:</span>
+                            <span className="font-medium text-[#527510]">{co2Progress.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full bg-[#BFC269] rounded-full h-2">
+                            <div className="bg-[#527510] h-2 rounded-full transition-all duration-1000" style={{ width: `${co2Progress}%` }}></div>
+                        </div>
+                        <p className="text-xs text-center text-[#193000]/40 mt-2">Limit: {userSettings.annualCo2Limit} kg</p>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-gray-900">{trip.estimatedCost} €</p>
-                    <p className="text-sm text-slate-500">{trip.estimatedCo2} kg CO2</p>
-                  </div>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+
+                {/* Budget Card */}
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#8DA736] relative">
+                     <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-2">
+                            <History className="h-5 w-5 text-[#3D5901]" />
+                            <h3 className="font-semibold text-[#193000]">Reisebudget</h3>
+                        </div>
+                        <span className="bg-[#8DA736]/30 text-[#193000] text-xs px-2 py-1 rounded-full font-medium">jährlich</span>
+                    </div>
+
+                     <div className="flex flex-col items-center justify-center relative h-48">
+                         <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={budgetChartData}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={60}
+                                    outerRadius={80}
+                                    startAngle={90}
+                                    endAngle={-270}
+                                    dataKey="value"
+                                    stroke="none"
+                                >
+                                    {budgetChartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={BUDGET_COLORS[index]} />
+                                    ))}
+                                </Pie>
+                            </PieChart>
+                         </ResponsiveContainer>
+                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                             <span className="text-2xl font-bold text-[#193000]">€{totalSpent}</span>
+                             <span className="text-xs text-[#193000]/60">ausgegeben</span>
+                         </div>
+                    </div>
+
+                    <div className="mt-4">
+                        <div className="flex justify-between text-sm mb-1">
+                            <span className="text-[#193000]/60">Fortschritt:</span>
+                            <span className="font-medium text-[#3D5901]">{budgetProgress.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full bg-[#BFC269] rounded-full h-2">
+                            <div className="bg-[#3D5901] h-2 rounded-full transition-all duration-1000" style={{ width: `${budgetProgress}%` }}></div>
+                        </div>
+                        <p className="text-xs text-center text-[#193000]/40 mt-2">Limit: €{userSettings.annualBudget}</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Saved Trips Section */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#8DA736]">
+                <div className="flex items-center gap-2 mb-4">
+                    <Bookmark className="h-5 w-5 text-[#527510]" />
+                    <h3 className="font-bold text-[#193000]">Gespeicherte Reisen</h3>
+                </div>
+                
+                {savedTrips.length === 0 ? (
+                    <div className="text-center py-8 text-[#193000]/40 text-sm">
+                        Noch keine Reisen gespeichert. Klicke im Chat auf "Reise wählen", um eine Reise zu merken.
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        {savedTrips.map(trip => (
+                            <div key={trip.id} className="border border-[#8DA736] rounded-xl p-4 hover:shadow-md transition-shadow flex justify-between items-center bg-[#FAFAFA]">
+                                <div>
+                                    <h4 className="font-bold text-[#193000]">{trip.destination}</h4>
+                                    <p className="text-sm text-[#193000]/60">{trip.startDate === 'TBD' ? 'Datum offen' : `${trip.startDate} - ${trip.endDate}`}</p>
+                                    {trip.notes && <p className="text-xs text-[#193000]/40 mt-1 italic">"{trip.notes}"</p>}
+                                </div>
+                                <div className="text-right">
+                                    <div className="font-medium text-[#193000]">{trip.estimatedCost} €</div>
+                                    <div className="text-xs text-[#527510]">{trip.estimatedCo2} kg CO₂</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Booking History Section */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#8DA736]">
+                 <div className="flex items-center gap-2 mb-4">
+                    <History className="h-5 w-5 text-[#193000]" />
+                    <h3 className="font-bold text-[#193000]">Buchungshistorie</h3>
+                </div>
+
+                {bookedTrips.length === 0 ? (
+                    <div className="text-center py-4 text-[#193000]/40 text-sm">
+                        Keine abgeschlossenen Buchungen.
+                    </div>
+                ) : (
+                     <div className="space-y-4">
+                        {bookedTrips.map(trip => (
+                            <div key={trip.id} className="flex justify-between items-center py-2 border-b border-[#8DA736] last:border-0">
+                                <div>
+                                    <h4 className="font-bold text-[#193000] text-sm">{trip.destination}</h4>
+                                    <div className="flex items-center text-xs text-[#193000]/50 mt-1 gap-2">
+                                        <span>{new Date(trip.startDate).toLocaleDateString('de-DE')}</span>
+                                        <span>•</span>
+                                        <div className="flex items-center gap-1">
+                                            <TransportIcon mode={trip.transportMode} />
+                                            <span>{trip.transportMode || 'Reise'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="flex items-center justify-end text-[#527510] text-xs font-medium mb-1">
+                                        <Leaf className="h-3 w-3 mr-1" />
+                                        {trip.estimatedCo2} kg
+                                    </div>
+                                    <div className="font-bold text-[#193000] text-sm">{trip.estimatedCost} €</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+          </>
+      )}
+
+      {activeTab === 'history' && (
+          <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-[#8DA736]">
+              <p className="text-[#193000]/50">Dein Suchverlauf ist leer.</p>
+          </div>
+      )}
+
     </div>
   );
 };

@@ -22,10 +22,16 @@ export interface Recommendation {
   title: string;
   destination: string;
   description: string;
-  estimatedCost: number;
+  estimatedCost: number; // Total sum
   estimatedCo2: number;
   transportMode: string;
   imageKeyword: string; // For finding an image
+  // New fields for separated pricing and links
+  flightPrice?: number;
+  accommodationPrice?: number;
+  flightLink?: string;
+  accommodationLink?: string;
+  accommodationType?: string; // 'Hotel' | 'Ferienhaus'
 }
 
 export interface ChatMessage {
@@ -37,6 +43,8 @@ export interface ChatMessage {
   proposedTrip?: Partial<Trip>;
   // If the model returns structured recommendations
   recommendations?: Recommendation[];
+  // If true, this is a system log/thought process message
+  isAction?: boolean;
 }
 
 export type View = 'dashboard' | 'planner' | 'history' | 'settings';

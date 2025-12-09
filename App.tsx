@@ -49,7 +49,13 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (view) {
       case 'dashboard':
-        return <Dashboard userSettings={userSettings} trips={trips} />;
+        return (
+          <Dashboard 
+            userSettings={userSettings} 
+            trips={trips} 
+            onEditLimits={() => setIsSettingsOpen(true)}
+          />
+        );
       case 'planner':
         return (
           <TripPlanner 
@@ -66,14 +72,26 @@ const App: React.FC = () => {
             setIsSettingsOpen(true);
             setView('dashboard'); // Go back to dashboard behind modal
         }, 0);
-        return <Dashboard userSettings={userSettings} trips={trips} />;
+        return (
+          <Dashboard 
+            userSettings={userSettings} 
+            trips={trips} 
+            onEditLimits={() => setIsSettingsOpen(true)}
+          />
+        );
       default:
-        return <Dashboard userSettings={userSettings} trips={trips} />;
+        return (
+          <Dashboard 
+            userSettings={userSettings} 
+            trips={trips} 
+            onEditLimits={() => setIsSettingsOpen(true)}
+          />
+        );
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-gray-900">
+    <div className="min-h-screen bg-[#FAFAFA] font-sans text-[#193000]">
       <Header currentView={view} setView={setView} />
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
